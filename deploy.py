@@ -54,11 +54,30 @@ def fail(msg):
 
 SCRIPT_DIR = Path(__file__).parent.resolve()
 
+def _resolve_cmd(cmd):
+    if isinstance(cmd, (list, tuple)) and cmd:
+        binary = cmd[0]
+        if isinstance(binary, str) and not Path(binary).is_absolute():
+            resolved = shutil.which(binary)
+            if resolved:
+                return [resolved, *cmd[1:]]
+    return cmd
+
 def run(cmd, cwd=SCRIPT_DIR, **kwargs):
-    return subprocess.run(cmd, check=True, cwd=cwd, **kwargs)
+    cmd = _resolve_cmd(cmd)
+    try:
+        return subprocess.run(cmd, check=True, cwd=cwd, **kwargs)
+    except FileNotFoundError as exc:
+        error(f"Command not found: {cmd[0]}")
+        raise SystemExit(1) from exc
 
 def run_out(cmd, cwd=None):
-    r = subprocess.run(cmd, capture_output=True, text=True, check=True, cwd=cwd)
+    cmd = _resolve_cmd(cmd)
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, check=True, cwd=cwd)
+    except FileNotFoundError as exc:
+        error(f"Command not found: {cmd[0]}")
+        raise SystemExit(1) from exc
     return r.stdout.strip()
 
 def tf(cmd):

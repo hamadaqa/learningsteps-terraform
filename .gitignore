@@ -9,3 +9,4 @@ __pycache__/
 *.pyc
 .claude/
 SECURITY_ROADMAP.md
+.terraform.tfstate.lock.info
