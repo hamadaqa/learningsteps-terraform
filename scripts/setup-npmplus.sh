@@ -1,14 +1,14 @@
 #!/bin/bash
-# Day 2 + Day 4 baseline — Docker, NPMplus (nginx-proxy-manager fork), CrowdSec
+# Day 2 + Day 3 baseline — Docker, NPMplus (nginx-proxy-manager fork), CrowdSec
 #
 # Replaces the old hand-rolled nginx + certbot + ModSecurity stack (setup-nginx.sh).
 # This script gets the VM to a "baseline" state:
 #   - Docker + Compose plugin installed
 #   - NPMplus running (admin GUI on :81, HTTP on :80, HTTPS on :443)
 #   - CrowdSec running alongside it, collections installed, but NOT yet wired
-#     to NPMplus as a bouncer (WAF is "off" until the live Day 4 demo wires it)
+#     to NPMplus as a bouncer (WAF is "off" until the live Day 2 demo wires it)
 #   - oauth2-proxy binary + systemd unit installed but not started (no OIDC
-#     creds yet — that's the live Day 2 demo: az ad app create, etc.)
+#     creds yet — that's the live Day 3 demo: az ad app create, etc.)
 #
 # Deliberately NOT done here (left for the live classroom demo):
 #   - Creating a Proxy Host in NPMplus for the app
@@ -156,7 +156,7 @@ labels:
   type: appsec
 EOF
 
-# ── NPMplus-side bouncer config (disabled until the Day 4 WAF demo) ──────────
+# ── NPMplus-side bouncer config (disabled until the Day 2 WAF demo) ──────────
 # Format confirmed by real testing: ENABLED + API_URL + APPSEC_URL + API_KEY.
 # (docs.crowdsec.net's quickstart implies just ENABLED+API_KEY is enough, but
 # without explicit API_URL/APPSEC_URL the npmplus container logs "Neither

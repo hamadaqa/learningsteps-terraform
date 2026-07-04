@@ -3,7 +3,7 @@
 # The PostgreSQL server is version 16 (postgresql.tf), but Ubuntu 22.04's
 # default "postgresql-client" package resolves to v14 — pg_dump refuses to
 # dump from a newer major server version ("aborting because of server
-# version mismatch"), which breaks Day 3's backup-before-migration step.
+# version mismatch"), which breaks Day 4's backup-before-migration step.
 # Confirmed by testing. Fix: add the PGDG apt repo and install
 # postgresql-client-16 explicitly instead of the distro's default package.
 apt:
@@ -45,6 +45,11 @@ runcmd:
   - /opt/learningsteps/venv/bin/pip install -r /opt/learningsteps/api/requirements.txt -q
   - until psql "${database_url}" -c '\q' 2>/dev/null; do sleep 5; done
   - psql "${database_url}" -f /opt/learningsteps/database_setup.sql
+  - >
+    psql "${database_url}" -c "INSERT INTO entries (id, data, created_at, updated_at) VALUES
+    ('seed-1', '{\"title\": \"Welcome to LearningSteps\", \"body\": \"This is a sample journal entry seeded at deploy time.\"}', now(), now()),
+    ('seed-2', '{\"title\": \"Second entry\", \"body\": \"A second sample entry so the app has visible data during the course.\"}', now(), now())
+    ON CONFLICT (id) DO NOTHING;"
   - systemctl daemon-reload
   - systemctl enable learningsteps
   - systemctl start learningsteps

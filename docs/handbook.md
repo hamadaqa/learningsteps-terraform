@@ -3,9 +3,9 @@
 A five-day hands-on security course. Each day, you harden one layer of a
 shared web application (LearningSteps: a FastAPI + PostgreSQL app deployed on
 Azure via Terraform). By the end of the week, the app is protected end to
-end: locked-down management access, identity-based authentication, an
-isolated database, encrypted traffic with a web application firewall, and
-automated attack detection and response.
+end: locked-down management access, encrypted traffic with a web application
+firewall, identity-based authentication, an isolated database, and automated
+attack detection and response.
 
 Deploy the environment once at the start of the week:
 
@@ -75,15 +75,15 @@ be refused.
 
 ---
 
-## Day 2 — Identity-Based API Access
+## Day 2 — Encryption and a Web Application Firewall
 
-**Goal**: require a valid Entra ID identity token before any request reaches
-the application, replacing anonymous access to the API.
+**Goal**: stand up the app's public entry point, encrypt all traffic to it,
+and add a web application firewall that blocks known attack patterns before
+anything else gets layered on top.
 
-Anyone who can reach the VM's app port can currently read, write, or delete
-data with no accountability. Today you put an identity gate in front of it —
-this is the same "static credential vs. identity" upgrade as Day 1, applied
-to the application layer instead of SSH.
+The app currently has no public entry point at all. Today you create one,
+close the "plaintext" gap with real TLS, and add a WAF that blocks SQL
+injection and XSS payloads before they reach the application.
 
 ### Demo 1 — Access the NPMplus Admin Panel
 
@@ -97,7 +97,7 @@ Browse to `https://localhost:8081` and log in.
 ### Demo 2 — Create the Proxy Host
 
 Create a Proxy Host for the app: domain = your VM's FQDN, forward to
-`127.0.0.1:8000`. Leave TLS off for now — that's Day 4.
+`127.0.0.1:8000`. Leave TLS off for now — that's the next demo.
 
 Via API instead of the GUI:
 ```bash
@@ -110,9 +110,110 @@ curl -sk -X POST https://localhost:8081/api/nginx/proxy-hosts \
   -d '{"domain_names":["<domain>"],"forward_scheme":"http","forward_host":"127.0.0.1","forward_port":8000,"locations":[]}'
 ```
 The `"locations": []` field must be included explicitly — omitting it
-breaks the Auth Request step later on.
+breaks the Auth Request step you'll wire up on Day 3.
 
-### Demo 3 — Register an Entra ID Application
+### Demo 3 — Confirm the Unencrypted Gap
+
+Request the app over plain HTTP and note the response is fully readable in
+transit — an open port is not the same thing as an encrypted connection:
+```
+curl -i "http://<domain>/entries"
+```
+
+### Demo 4 — Enable Real TLS
+
+In the NPMplus GUI, open the Proxy Host's SSL tab, choose "Request a new SSL
+Certificate," select Let's Encrypt, and save. NPMplus handles the
+domain-verification challenge and certificate storage automatically.
+**Wait time: well under a minute** for issuance. Confirm:
+```
+curl -i https://<domain>/entries
+```
+returns a valid, browser-trusted certificate, and that plain HTTP now
+redirects to HTTPS.
+
+Via API instead:
+```bash
+CERT_ID=$(curl -sk -X POST https://localhost:8081/api/nginx/certificates \
+  -b npm.cookies -H "Content-Type: application/json" \
+  -d '{"provider":"letsencrypt","domain_names":["<domain>"],"meta":{"dns_challenge":false}}' \
+  | python3 -c "import sys,json;print(json.load(sys.stdin)['id'])")
+
+curl -sk -X PUT https://localhost:8081/api/nginx/proxy-hosts/<id> \
+  -b npm.cookies -H "Content-Type: application/json" \
+  -d "{\"certificate_id\":$CERT_ID,\"ssl_forced\":true}"
+```
+
+### Demo 5 — Enable the Web Application Firewall
+
+First show the gap: send known attack payloads and note they pass straight
+through:
+```
+curl -i "https://<domain>/entries?id=1+UNION+SELECT+*+FROM+users"
+curl -i "https://<domain>/entries?q=%3Cscript%3Ealert(1)%3C%2Fscript%3E"
+```
+
+Enable the WAF (CrowdSec, running the OWASP Core Rule Set). `azureuser`
+isn't in the `docker` group, so this needs `sudo`:
+```
+sudo docker exec crowdsec cscli bouncers add npmplus
+# copy the printed API key immediately — it's shown once
+sudo nano /opt/npmplus/crowdsec/crowdsec.conf
+#   ENABLED=true
+#   API_URL=http://127.0.0.1:8080
+#   APPSEC_URL=http://127.0.0.1:7422
+#   API_KEY=<paste key>
+cd /opt/npmplus && sudo docker compose restart npmplus
+```
+**Wait time: 1-2 minutes** for the container restart.
+
+Re-send the same payloads — both now return `403`, no authentication needed
+(there's no identity gate in front of the app yet — that's Day 3). Inspect
+the block with:
+```
+sudo docker exec crowdsec cscli alerts list
+```
+
+**A note worth mentioning out loud**: CrowdSec shares detected attack
+signals with its community threat-intel blocklist by default. Check
+`cscli console status`, and `cscli console disable` to opt out. Worth
+raising as a "read the fine print on security tools" moment regardless of
+which way the class decides to leave it.
+
+**Keep this test in mind for Day 3** — once you layer an identity gate in
+front of the app, re-running these exact payloads unauthenticated no longer
+returns `403`. That's not a WAF regression; it's a lesson in defense-in-depth
+ordering, covered explicitly in Day 3.
+
+### Troubleshooting
+
+- **NPMplus's own admin panel starts returning 403s after enabling the
+  WAF**: the WAF protects the entire proxy instance, including NPMplus's own
+  admin interface. Temporarily set `ENABLED=false` in
+  `/opt/npmplus/crowdsec/crowdsec.conf` to make further admin changes, then
+  re-enable.
+- **A previously-blocked IP still gets 403'd on a clean request**: after
+  enough attack attempts, CrowdSec may issue a longer-lived ban for that IP
+  (`sudo docker exec crowdsec cscli decisions list`), independent of any
+  single request's content. This is expected — the IP is banned outright,
+  not still being flagged request-by-request.
+
+---
+
+## Day 3 — Identity-Based API Access
+
+**Goal**: require a valid Entra ID identity token before any request reaches
+the application, replacing anonymous access to the API.
+
+Anyone who can reach the app right now can read, write, or delete data with
+no accountability. Today you put an identity gate in front of it — the same
+"static credential vs. identity" upgrade as Day 1, applied to the
+application layer instead of SSH. Because TLS is already live from Day 2,
+this is also the day you'll complete a real, full interactive browser login
+— Entra requires an HTTPS reply URL, so this could only be done as a
+scripted bearer-token check before now.
+
+### Demo 1 — Register an Entra ID Application
 
 ```
 APP_ID=$(az ad app create --display-name learningsteps-oauth2-proxy \
@@ -135,13 +236,13 @@ az rest --method PATCH --uri "https://graph.microsoft.com/v1.0/applications/$OBJ
   --body '{"api":{"requestedAccessTokenVersion":2}}'
 ```
 Without this, `az account get-access-token --resource api://$APP_ID` (used
-in Demo 6 below) issues a **v1.0-format** token
+in Demo 4 below) issues a **v1.0-format** token
 (`"iss": "https://sts.windows.net/<tenant>/"`, `"ver": "1.0"`) by default.
 oauth2-proxy is configured with the v2.0 issuer URL
 (`https://login.microsoftonline.com/<tenant>/v2.0`) and rejects a v1.0
 token outright. This is unrelated to `OAUTH2_PROXY_OIDC_EXTRA_AUDIENCES` or
 `SKIP_JWT_BEARER_TOKENS` — both can be configured correctly and the
-bearer-token test in Demo 6 will still fail without this token-version fix.
+bearer-token test in Demo 4 will still fail without this token-version fix.
 
 Also required — expose an API scope, and register the reply URL that
 oauth2-proxy will redirect to after login:
@@ -153,22 +254,19 @@ az rest --method PATCH --uri "https://graph.microsoft.com/v1.0/applications/$OBJ
 az ad app update --id $APP_ID --web-redirect-uris "https://<domain>/oauth2/callback"
 ```
 Without an exposed scope, the first `az account get-access-token
---resource api://$APP_ID` in Demo 6 fails outright with `AADSTS650057:
+--resource api://$APP_ID` in Demo 4 fails outright with `AADSTS650057:
 Invalid resource` — `az ad app create` does not add one by default.
-Without the reply URL registered, the real browser login in Demo 6 fails
+Without the reply URL registered, the real browser login in Demo 4 fails
 with `AADSTS500113: No reply address is registered for the application`.
-Note Entra rejects non-HTTPS reply URLs (except `localhost`) — so the
-*reply URL itself* must be `https://`, which means the full interactive
-browser login in Demo 6 cannot actually complete until Day 4's TLS step is
-live. Register it here anyway (so it's ready), verify Demo 6 with the
-bearer-token method for now, and come back to confirm the real browser
-round-trip once Day 4 is done.
+The reply URL must be `https://` (Entra rejects non-HTTPS reply URLs except
+`localhost`) — which is why this step waited until TLS was already live
+from Day 2.
 
 **Wait time**: allow a minute after `az ad sp create` before testing tokens
 — Entra ID directory replication can lag briefly for a brand-new Service
 Principal.
 
-### Demo 4 — Configure and Start oauth2-proxy
+### Demo 2 — Configure and Start oauth2-proxy
 
 On the VM, fill in the empty fields in `/etc/oauth2-proxy/oauth2-proxy.env`
 with `sed` — don't overwrite the whole file. `setup-oauth2-proxy.sh`
@@ -190,7 +288,7 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now oauth2-proxy
 ```
 
-### Demo 5 — Wire Identity Enforcement into NPMplus
+### Demo 3 — Wire Identity Enforcement into NPMplus
 
 In the NPMplus GUI, open the Proxy Host's **Auth Request** tab, select
 **oauth2proxy**, and save. This wires identity enforcement in front of the
@@ -209,25 +307,22 @@ curl -sk -X PUT https://localhost:8081/api/nginx/proxy-hosts/<id> \
   -d '{"npmplus_auth_request":"oauth2proxy"}'
 ```
 
-### Demo 6 — Test the Identity Gate
+### Demo 4 — Test the Identity Gate
 
-- `curl -i http://<domain>/` → redirected to Microsoft sign-in
+- `curl -i https://<domain>/` → redirected to Microsoft sign-in
   (unauthenticated).
-- `curl -i -H "Authorization: Bearer garbage" http://<domain>/` → also
+- `curl -i -H "Authorization: Bearer garbage" https://<domain>/` → also
   redirected (a malformed token doesn't get a free pass).
 - Visit `https://<domain>/` in a browser, complete the Microsoft login, land
-  on the app with a valid session. **This step only works after Day 4's TLS
-  is live** (Entra rejects the `http://` reply URL outright — see the note
-  in Demo 3). Until then, use the bearer-token method below as your Day 2
-  verification, and circle back to confirm the real browser round-trip once
-  Day 4 is done.
+  on the app with a valid session. This is the real end-to-end round trip —
+  it works now because TLS (Day 2) makes the HTTPS reply URL possible.
 - To verify the full identity check without a browser (useful for
   scripting/grading), get a real Entra ID token scoped to the app and send
   it directly:
   ```bash
   TOKEN=$(az account get-access-token --tenant $TENANT_ID \
     --resource api://$APP_ID --query accessToken -o tsv)
-  curl -i http://<domain>/entries -H "Authorization: Bearer $TOKEN"
+  curl -i https://<domain>/entries -H "Authorization: Bearer $TOKEN"
   ```
   This should return `200` with no browser redirect — oauth2-proxy validates
   the bearer token directly against Entra ID's signing keys. The **first**
@@ -237,7 +332,30 @@ curl -sk -X PUT https://localhost:8081/api/nginx/proxy-hosts/<id> \
   incremental consent for a new app+resource+user combination, not an
   error; approve it once and subsequent calls are silent. (This is separate
   from — and does not replace — the `api.requestedAccessTokenVersion` fix
-  in Demo 3, which is required regardless of consent.)
+  in Demo 1, which is required regardless of consent.)
+
+### Demo 5 — Re-test Day 2's WAF Now That Identity Is Layered On
+
+Day 2 confirmed the WAF blocks these payloads with a `403`. Send the exact
+same payload again, unauthenticated:
+```
+curl -i "https://<domain>/entries?id=1+UNION+SELECT+*+FROM+users"
+```
+You'll get a `302` redirect to login, not a `403`. The Auth Request check
+runs before the WAF check on the same location — an unauthenticated
+attacker gets redirected to sign-in instead of blocked, so the attempt never
+shows up as a WAF hit. To confirm the WAF is still active behind the gate,
+repeat with a valid identity attached (a browser session cookie, or the
+bearer token from Demo 4):
+```bash
+curl -i "https://<domain>/entries?id=1+UNION+SELECT+*+FROM+users" \
+  -H "Authorization: Bearer $TOKEN"
+```
+This should return `403` again. **Discussion point**: the WAF is still
+protecting you, just against attackers who already have (or stole) a valid
+session — arguably the more realistic threat, but also a real narrowing of
+what the WAF actually sees. Layering security controls changes what each one
+covers, not just adding coverage on top.
 
 ### Troubleshooting
 
@@ -249,13 +367,13 @@ curl -sk -X PUT https://localhost:8081/api/nginx/proxy-hosts/<id> \
 
 ---
 
-## Day 3 — Data Isolation
+## Day 4 — Data Isolation
 
 **Goal**: understand why the database has no public IP at all (Azure Private
 Link — reachable only from inside the virtual network), and practice a safe,
 backup-first migration by recreating it.
 
-**Note on this baseline**: unlike Day 2 and Day 4 (where the software is
+**Note on this baseline**: unlike Day 2 and Day 3 (where the software is
 pre-installed but left *unwired* for the live demo), `postgresql.tf` already
 deploys the database fully private — delegated subnet, private DNS zone,
 `public_network_access_enabled = false` — from the very first
@@ -278,10 +396,12 @@ ssh -i .learningsteps_key azureuser@<vm-ip> \
   > learningsteps_backup.sql
 ```
 Confirm the file is non-empty and contains real table data before
-proceeding — there's no undo once the next step runs. Pulling it to your
-laptop (rather than leaving it in `/tmp` on the VM) matters here: a bad
-Day 3 practice run can end up recreating more than just the database (see
-Demo 2's callout), so treat the VM as disposable too.
+proceeding — there's no undo once the next step runs (the app comes seeded
+with a couple of sample journal entries at deploy time specifically so this
+backup isn't just an empty schema). Pulling it to your laptop (rather than
+leaving it in `/tmp` on the VM) matters here: a bad Day 4 practice run can
+end up recreating more than just the database (see Demo 2's callout), so
+treat the VM as disposable too.
 
 **Prerequisite**: the VM's default `postgresql-client` package (Ubuntu
 22.04) is v14, but the server runs PostgreSQL 16 — `pg_dump` refuses to dump
@@ -330,7 +450,8 @@ inside the same virtual network) keeps working normally once restored.
 ### Demo 4 — Confirm the App Recovered
 
 Check that the app is actually serving data again, not just that the server
-exists:
+exists — you should see the seeded sample entries come back, not just an
+empty list:
 ```
 curl -s https://<domain>/entries -H "Authorization: Bearer $TOKEN"
 ```
@@ -352,109 +473,6 @@ ssh -i .learningsteps_key azureuser@<vm-ip> "sudo systemctl restart learningstep
 
 ---
 
-## Day 4 — Encryption and a Web Application Firewall
-
-**Goal**: encrypt all traffic and add a web application firewall that blocks
-known attack patterns.
-
-Two gaps remain: traffic is still plaintext, and nothing inspects what's
-actually being sent to the API. Today you close both — first with real TLS,
-then with a WAF that blocks SQL injection and XSS payloads before they reach
-the application.
-
-### Demo 1 — Confirm the Unencrypted Gap
-
-With the Proxy Host from Day 2 still running without TLS, request it over
-plain HTTP and note the response is fully readable in transit — an open
-port is not the same thing as an encrypted connection.
-
-### Demo 2 — Enable Real TLS
-
-In the NPMplus GUI, open the Proxy Host's SSL tab, choose "Request a new SSL
-Certificate," select Let's Encrypt, and save. NPMplus handles the
-domain-verification challenge and certificate storage automatically.
-**Wait time: well under a minute** for issuance. Confirm:
-```
-curl -i https://<domain>/entries
-```
-returns a valid, browser-trusted certificate, and that plain HTTP now
-redirects to HTTPS.
-
-Via API instead:
-```bash
-CERT_ID=$(curl -sk -X POST https://localhost:8081/api/nginx/certificates \
-  -b npm.cookies -H "Content-Type: application/json" \
-  -d '{"provider":"letsencrypt","domain_names":["<domain>"],"meta":{"dns_challenge":false}}' \
-  | python3 -c "import sys,json;print(json.load(sys.stdin)['id'])")
-
-curl -sk -X PUT https://localhost:8081/api/nginx/proxy-hosts/<id> \
-  -b npm.cookies -H "Content-Type: application/json" \
-  -d "{\"certificate_id\":$CERT_ID,\"ssl_forced\":true}"
-```
-
-### Demo 3 — Enable the Web Application Firewall
-
-First show the gap: send known attack payloads and note they pass straight
-through:
-```
-curl -i "https://<domain>/entries?id=1+UNION+SELECT+*+FROM+users"
-curl -i "https://<domain>/entries?q=%3Cscript%3Ealert(1)%3C%2Fscript%3E"
-```
-
-Enable the WAF (CrowdSec, running the OWASP Core Rule Set). `azureuser`
-isn't in the `docker` group, so this needs `sudo`:
-```
-sudo docker exec crowdsec cscli bouncers add npmplus
-# copy the printed API key immediately — it's shown once
-sudo nano /opt/npmplus/crowdsec/crowdsec.conf
-#   ENABLED=true
-#   API_URL=http://127.0.0.1:8080
-#   APPSEC_URL=http://127.0.0.1:7422
-#   API_KEY=<paste key>
-cd /opt/npmplus && sudo docker compose restart npmplus
-```
-**Wait time: 1-2 minutes** for the container restart.
-
-Re-send the same payloads — both now return `403`. Inspect the block with:
-```
-sudo docker exec crowdsec cscli alerts list
-```
-
-**Important — test this authenticated.** Since Day 2's identity check runs
-before the WAF check on the same path, an unauthenticated attack request
-gets redirected to the login page rather than reaching the WAF at all — so
-it won't show a `403`. To see the WAF in action, attach a valid identity to
-the request first — either a browser session cookie, or the same bearer
-token approach from Day 2:
-```bash
-curl -i "https://<domain>/entries?id=1+UNION+SELECT+*+FROM+users" \
-  -H "Authorization: Bearer $TOKEN"
-```
-This is a good discussion point: the WAF is still protecting you, just
-against attackers who already have (or stole) a valid session — arguably
-the more realistic threat.
-
-**A note worth mentioning out loud**: CrowdSec shares detected attack
-signals with its community threat-intel blocklist by default. Check
-`cscli console status`, and `cscli console disable` to opt out. Worth
-raising as a "read the fine print on security tools" moment regardless of
-which way the class decides to leave it.
-
-### Troubleshooting
-
-- **NPMplus's own admin panel starts returning 403s after enabling the
-  WAF**: the WAF protects the entire proxy instance, including NPMplus's own
-  admin interface. Temporarily set `ENABLED=false` in
-  `/opt/npmplus/crowdsec/crowdsec.conf` to make further admin changes, then
-  re-enable.
-- **A previously-blocked IP still gets 403'd on a clean request**: after
-  enough attack attempts, CrowdSec may issue a longer-lived ban for that IP
-  (`sudo docker exec crowdsec cscli decisions list`), independent of any single
-  request's content. This is expected — the IP is banned outright, not
-  still being flagged request-by-request.
-
----
-
 ## Day 5 — Visibility and Automated Response
 
 **Goal**: ship logs to a central security platform, detect an attack
@@ -463,7 +481,10 @@ pattern automatically, and respond to it without a human in the loop.
 Every layer built so far is a static defense. Today closes the loop: traffic
 logs flow into Microsoft Sentinel, an analytics rule watches for attack
 patterns, and — when one fires — a Logic App automatically blocks the
-attacker at the network level.
+attacker at the network level. **Heads up on timing**: between log
+ingestion delay and the analytics rule's 5-minute cycle, this day has more
+built-in waiting than any other — kick off Demo 3 early (e.g. right after a
+break) rather than saving it for the last few minutes of class.
 
 ### Demo 1 — Confirm Log Forwarding
 
@@ -474,7 +495,7 @@ sudo systemctl status npmplus-log-forwarder --no-pager
 Generate some traffic and confirm it's captured locally first — this is the
 fastest way to debug anything that doesn't show up later in Sentinel:
 ```
-curl -s https://<domain>/entries >/dev/null
+curl -s https://<domain>/entries -H "Authorization: Bearer $TOKEN" >/dev/null
 journalctl -t nginx --since '1 min ago'
 ```
 
@@ -489,7 +510,7 @@ Syslog | where ProcessName == "nginx" | take 5
 ### Demo 3 — Run the Attack Simulation
 
 Fire the "Final Test" attack simulation with a valid authenticated session
-(see Day 4's note on why):
+(see Day 3 Demo 5 on why unauthenticated won't trigger the WAF at all):
 ```
 for i in $(seq 1 6); do
   curl -s -o /dev/null -w "%{http_code}\n" \
@@ -497,7 +518,7 @@ for i in $(seq 1 6); do
     -H "Authorization: Bearer $TOKEN"
 done
 ```
-All six should return `403` (the WAF must already be enabled from Day 4).
+All six should return `403` (the WAF must already be enabled from Day 2).
 
 ### Demo 4 — Validate the Detection Query
 
@@ -533,6 +554,15 @@ at the network level (not just return an app-level error). A rule existing
 and a rule actually blocking traffic are two different claims — always
 check both.
 
+**If the attacking IP is your own** (true whenever you're running the
+simulation from your own machine), this block also cuts off your own
+SSH/GUI-tunnel access to the VM. Remove the auto-created
+`sentinel-block-<ip>` NSG rule once you've confirmed the block works, to
+restore your own access:
+```
+az network nsg rule delete --resource-group <rg> --nsg-name nsg-<prefix> --name sentinel-block-<ip>
+```
+
 ### Troubleshooting
 
 - **Nothing appears in Sentinel after several minutes**: validate the raw
@@ -540,6 +570,7 @@ check both.
   rule will fire on its next 5-minute cycle; if it returns nothing, the
   problem is upstream of Sentinel (check Demo 1's local log output first).
 - **A retest right after a successful block seems to fail strangely**: check
-  `sudo docker exec crowdsec cscli decisions list` — the attacking IP may already
-  be under a longer CrowdSec ban independent of the NSG rule, which will
-  make all its requests fail rather than just the malicious-looking ones.
+  `sudo docker exec crowdsec cscli decisions list` — the attacking IP may
+  already be under a longer CrowdSec ban independent of the NSG rule, which
+  will make all its requests fail rather than just the malicious-looking
+  ones.

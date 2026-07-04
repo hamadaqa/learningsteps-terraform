@@ -23,7 +23,7 @@
 # what the old hand-written nginx json_combined format did, just produced by
 # a forwarder instead of nginx itself.
 #
-# Run this after Day 4 setup-npmplus.sh has already completed and the Proxy
+# Run this after Day 2 setup-npmplus.sh has already completed and the Proxy
 # Host for the app exists (so access.log has content).
 #
 # Usage:

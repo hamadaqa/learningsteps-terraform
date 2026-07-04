@@ -1,8 +1,8 @@
 #!/bin/bash
-# Day 2 baseline — install oauth2-proxy binary + systemd unit (NOT started)
+# Day 3 baseline — install oauth2-proxy binary + systemd unit (NOT started)
 #
 # Only installs the binary and a systemd unit template. The actual OIDC wiring
-# (Entra ID app registration, client id/secret, issuer URL) is the live Day 2
+# (Entra ID app registration, client id/secret, issuer URL) is the live Day 3
 # classroom demo — see docs/course-updates/day2-handbook.md — because that
 # az ad app create walkthrough IS the day's teaching content, not boilerplate
 # to automate away.
@@ -31,9 +31,9 @@ echo "    $(oauth2-proxy --version)"
 
 mkdir -p /etc/oauth2-proxy
 if [ ! -f /etc/oauth2-proxy/oauth2-proxy.env ]; then
-    echo "==> Writing placeholder env file (fill in during the Day 2 live demo)..."
+    echo "==> Writing placeholder env file (fill in during the Day 3 live demo)..."
     cat > /etc/oauth2-proxy/oauth2-proxy.env << 'EOF'
-# Fill these in during the Day 2 live demo, after:
+# Fill these in during the Day 3 live demo, after:
 #   az ad app create --display-name learningsteps-oauth2-proxy \
 #       --sign-in-audience AzureADMyOrg \
 #       --identifier-uris api://$APP_ID
@@ -45,7 +45,7 @@ OAUTH2_PROXY_COOKIE_SECRET=
 # api://$APP_ID — same value as the app registration's identifier URI. Lets
 # oauth2-proxy validate a bearer token (az account get-access-token
 # --resource api://$APP_ID) directly, without a browser session — used to
-# verify the auth flow end-to-end (see docs/handbook.md Day 2, step 6).
+# verify the auth flow end-to-end (see docs/handbook.md Day 3, Demo 4).
 OAUTH2_PROXY_OIDC_EXTRA_AUDIENCES=
 OAUTH2_PROXY_SKIP_JWT_BEARER_TOKENS=true
 EOF

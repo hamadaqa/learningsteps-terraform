@@ -427,7 +427,7 @@ def run_npmplus_setup(vm_ip, key_path):
 
 
 def run_oauth2_proxy_setup(vm_ip, key_path):
-    info("oauth2-proxy binary + systemd unit (not started — OIDC creds are the Day 2 live demo)")
+    info("oauth2-proxy binary + systemd unit (not started — OIDC creds are the Day 3 live demo)")
     return _run_setup_script(vm_ip, key_path, "setup-oauth2-proxy.sh", "oauth2-proxy install")
 
 
@@ -451,7 +451,7 @@ _NO_REDIRECT_OPENER = urllib.request.build_opener(_NoRedirect)
 
 def wait_for_npmplus(app_url_base):
     """NPMplus listens on :80/:443 immediately, but with no Proxy Host configured
-    yet (that's created live in the Day 4 demo) it serves its own default/dead
+    yet (that's created live in the Day 2 demo) it serves its own default/dead
     page rather than the app. This just confirms NPMplus itself answered."""
     info("Waiting for NPMplus to accept connections on :80")
     url = f"{app_url_base.replace('https://', 'http://')}"
@@ -559,9 +559,9 @@ def main():
 
     print()
     print(_c("1;36", "  Baseline is up. The following are LIVE CLASSROOM DEMO steps, not automated:"))
-    print("    Day 2 — az ad app create, then fill /etc/oauth2-proxy/oauth2-proxy.env, enable the service,")
+    print("    Day 3 — az ad app create, then fill /etc/oauth2-proxy/oauth2-proxy.env, enable the service,")
     print("            create an NPMplus Proxy Host with Auth Request = oauth2proxy")
-    print("    Day 4 — create the Proxy Host with SSL off, curl plaintext, then toggle 'Request a new")
+    print("    Day 2 — create the Proxy Host with SSL off, curl plaintext, then toggle 'Request a new")
     print("            SSL Certificate', then wire CrowdSec (cscli bouncers add + crowdsec.conf ENABLED=true)")
     print("    See docs/course-updates/day2-handbook.md and day4-handbook.md for exact commands.")
     if not FAILURES:
