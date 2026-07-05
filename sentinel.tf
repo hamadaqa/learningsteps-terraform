@@ -92,6 +92,16 @@ resource "azurerm_sentinel_alert_rule_scheduled" "waf_attack" {
   # deployment. The old regex-based extract() never matched this shape and
   # silently returned zero rows. This version reads ProcessName directly and
   # parses SyslogMessage as JSON with no regex.
+  #
+  # ClientIP == "127.0.0.1" is excluded — found live during full-course
+  # testing: the NPMplus admin API tunnel (Day 2) is itself proxied through
+  # nginx and shows up as remote_addr=127.0.0.1. CrowdSec's WAF can flag a
+  # normal admin session's own requests as anomalous, and enough of those
+  # (e.g. repeated proxy-host PUTs) cross the 5-block threshold on their own —
+  # triggering this rule and the Day 5 auto-block playbook against
+  # 127.0.0.1, which is a meaningless NSG deny rule (it can never appear as a
+  # real inbound source) and confusingly pre-empts the real attack-simulation
+  # demo with an unrelated incident.
   query = <<-KQL
     Syslog
     | where ProcessName == "nginx"
@@ -101,6 +111,7 @@ resource "azurerm_sentinel_alert_rule_scheduled" "waf_attack" {
     | extend Uri        = tostring(log.uri)
     | extend Method     = tostring(log.method)
     | where StatusCode == 403
+    | where ClientIP != "127.0.0.1"
     | summarize
         WafBlocks   = count(),
         FirstSeen   = min(TimeGenerated),

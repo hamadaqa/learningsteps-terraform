@@ -1,7 +1,7 @@
 #!/bin/bash
 # Day 5 — Forward NPMplus nginx access logs to host syslog (facility=local0)
 #
-# Investigation summary (see docs/course-updates/day5-handbook.md for detail):
+# Investigation summary (see handbook.md Day 5 for detail):
 #   NPMplus does not log to host syslog directly. With LOGROTATE=true (already
 #   set in setup-npmplus.sh's compose.yaml) it writes access logs to
 #   /opt/npmplus/nginx/logs/access.log on the HOST filesystem (bind-mounted

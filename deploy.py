@@ -303,41 +303,7 @@ def read_outputs():
 
     return vm_ip, rg, db_fqdn, vm_name, app_url, domain
 
-# ── step 6 — azure ad ssh ────────────────────────────────────────────────────
-
-def setup_aad_ssh(rg, vm_name):
-    info("Azure AD SSH — role assignment")
-
-    try:
-        user_id = run_out(["az", "ad", "signed-in-user", "show", "--query", "id", "-o", "tsv"], exit_on_error=False)
-    except subprocess.CalledProcessError:
-        warn("Could not retrieve signed-in user — skipping AAD SSH role assignment")
-        return
-
-    vm_id = run_out(["az", "vm", "show", "--resource-group", rg, "--name", vm_name,
-                     "--query", "id", "-o", "tsv"])
-
-    existing = run_out(["az", "role", "assignment", "list",
-                        "--assignee", user_id,
-                        "--role", "Virtual Machine Administrator Login",
-                        "--scope", vm_id,
-                        "--query", "length(@)", "-o", "tsv"])
-    if existing.strip() != "0":
-        ok("Role 'Virtual Machine Administrator Login' already assigned — skipping")
-        return
-
-    try:
-        run(["az", "role", "assignment", "create",
-             "--assignee", user_id,
-             "--role", "Virtual Machine Administrator Login",
-             "--scope", vm_id],
-            stdout=subprocess.DEVNULL)
-        ok(f"Role 'Virtual Machine Administrator Login' assigned to current user")
-    except subprocess.CalledProcessError:
-        warn("Role assignment failed — you may need Owner/User Access Administrator on the subscription")
-        warn(f"Run manually: az role assignment create --assignee <email> --role 'Virtual Machine Administrator Login' --scope {vm_id}")
-
-# ── step 7 — azure checks ─────────────────────────────────────────────────────
+# ── step 6 — azure checks ─────────────────────────────────────────────────────
 
 def check_azure_resources(rg, db_fqdn):
     info("Azure resource checks")
@@ -547,8 +513,8 @@ def seed_sample_data(vm_ip, key_path, db_fqdn):
     db_url = f"postgresql://psqladmin:{pw}@{db_fqdn}/learning_journal?sslmode=require"
     script = f"""
 psql "{db_url}" -c "INSERT INTO entries (id, data, created_at, updated_at) VALUES
-('seed-1', '{{\\"work\\": \\"Deployed the LearningSteps environment\\", \\"struggle\\": \\"None yet\\", \\"intention\\": \\"Complete this week''s security course\\"}}', now(), now()),
-('seed-2', '{{\\"work\\": \\"Reviewed the course handbook\\", \\"struggle\\": \\"Lots of new Azure concepts\\", \\"intention\\": \\"Ask questions during the demos\\"}}', now(), now())
+('seed-1', '{{\\"work\\": \\"Deployed the LearningSteps environment\\", \\"struggle\\": \\"None yet\\", \\"intention\\": \\"Complete this week''s walkthrough\\"}}', now(), now()),
+('seed-2', '{{\\"work\\": \\"Reviewed the handbook\\", \\"struggle\\": \\"Lots of new Azure concepts\\", \\"intention\\": \\"Ask questions during the demos\\"}}', now(), now())
 ON CONFLICT (id) DO NOTHING;"
 """
     rc, out, err = ssh_run_script(vm_ip, key_path, script, timeout=30)
@@ -576,7 +542,6 @@ def main():
     collect_config(public_key, args)
     deploy()
     vm_ip, rg, db_fqdn, vm_name, app_url, domain = read_outputs()
-    setup_aad_ssh(rg, vm_name)
     check_azure_resources(rg, db_fqdn)
     if wait_for_service(vm_ip, key_path):
         run_api_tests(vm_ip, key_path)
@@ -588,12 +553,7 @@ def main():
     run_json_logging_setup(vm_ip, key_path)
 
     print()
-    print(_c("1;36", "  Baseline is up. The following are LIVE CLASSROOM DEMO steps, not automated:"))
-    print("    Day 3 — az ad app create, then fill /etc/oauth2-proxy/oauth2-proxy.env, enable the service,")
-    print("            create an NPMplus Proxy Host with Auth Request = oauth2proxy")
-    print("    Day 2 — create the Proxy Host with SSL off, curl plaintext, then toggle 'Request a new")
-    print("            SSL Certificate', then wire CrowdSec (cscli bouncers add + crowdsec.conf ENABLED=true)")
-    print("    See docs/course-updates/day2-handbook.md and day4-handbook.md for exact commands.")
+    print(_c("1;36", "  Baseline is up. Days 2-5 are live demo steps, not automated — see handbook.md."))
     if not FAILURES:
         print(_c("0;32", "  All checks passed. Deployment is working."))
     else:

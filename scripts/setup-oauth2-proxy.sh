@@ -3,7 +3,7 @@
 #
 # Only installs the binary and a systemd unit template. The actual OIDC wiring
 # (Entra ID app registration, client id/secret, issuer URL) is the live Day 3
-# classroom demo — see docs/course-updates/day2-handbook.md — because that
+# classroom demo — see handbook.md Day 3 — because that
 # az ad app create walkthrough IS the day's teaching content, not boilerplate
 # to automate away.
 #
@@ -45,7 +45,7 @@ OAUTH2_PROXY_COOKIE_SECRET=
 # api://$APP_ID — same value as the app registration's identifier URI. Lets
 # oauth2-proxy validate a bearer token (az account get-access-token
 # --resource api://$APP_ID) directly, without a browser session — used to
-# verify the auth flow end-to-end (see docs/handbook.md Day 3, Demo 4).
+# verify the auth flow end-to-end (see handbook.md Day 3, Demo 4).
 OAUTH2_PROXY_OIDC_EXTRA_AUDIENCES=
 OAUTH2_PROXY_SKIP_JWT_BEARER_TOKENS=true
 EOF

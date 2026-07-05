@@ -24,7 +24,7 @@
 
 set -euo pipefail
 
-NPMPLUS_IMAGE_TAG="2026-06-25-r1"   # pinned release, NOT :develop/:beta — see docs/course-updates/day4-handbook.md
+NPMPLUS_IMAGE_TAG="2026-06-25-r1"   # pinned release, NOT :develop/:beta — see handbook.md
 CROWDSEC_IMAGE_TAG="latest"        # crowdsecurity publishes no equally-pinned "stable" tag scheme at time of writing; documented as a known gap
 
 echo "==> Installing Docker + Compose plugin..."

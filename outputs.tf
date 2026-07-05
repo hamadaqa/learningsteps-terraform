@@ -14,8 +14,8 @@ output "app_url" {
 }
 
 output "npmplus_admin_tunnel_command" {
-  description = "NPMplus admin GUI (port 81) is intentionally NOT exposed via NSG — same lockdown principle as Day 1 SSH. Use an SSH tunnel."
-  value       = "ssh -i .learningsteps_key -L 8081:localhost:81 ${var.vm_admin_username}@${azurerm_public_ip.vm.ip_address}   # then browse https://localhost:8081"
+  description = "NPMplus admin GUI (port 81) is intentionally NOT exposed via NSG — same lockdown principle as Day 1 SSH. Use an SSH tunnel over the Entra ID identity from Day 1 (az ssh config), not the static key."
+  value       = "az ssh config --resource-group ${azurerm_resource_group.main.name} --name ${azurerm_linux_virtual_machine.vm.name} --file azssh_config && ssh -F azssh_config -L 8081:localhost:81 ${azurerm_public_ip.vm.ip_address}   # then browse https://localhost:8081"
 }
 
 output "postgresql_fqdn" {
