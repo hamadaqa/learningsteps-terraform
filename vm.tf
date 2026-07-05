@@ -74,8 +74,19 @@ resource "azurerm_linux_virtual_machine" "vm" {
   # Explicit ordering only (cloud-init's runcmd already retries the DB
   # connection until it succeeds) — keeps "DB should exist before the VM
   # tries to use it" predictable without coupling custom_data to a
-  # computed attribute.
-  depends_on = [azurerm_postgresql_flexible_server.main]
+  # computed attribute. The firewall rule matters here too: at baseline
+  # the DB is public (Day 4 migrates it to Private Link), and a public
+  # Flexible Server still denies all connections — including from the VM
+  # itself — until a firewall rule permits them. Without this, Terraform
+  # can create the VM (and cloud-init's DB setup can start) before the
+  # firewall rule exists, causing a real, confirmed-live race: cloud-init's
+  # own retry loop eventually connects and creates the table, but
+  # deploy.py's separate seeding step (running moments later) can still
+  # lose that race and find the table gone.
+  depends_on = [
+    azurerm_postgresql_flexible_server.main,
+    azurerm_postgresql_flexible_server_firewall_rule.allow_all,
+  ]
 }
 
 resource "azurerm_virtual_machine_extension" "aad_ssh" {

@@ -528,74 +528,124 @@ covers, not just adding coverage on top.
 
 ## Day 4 — Data Isolation
 
-**Goal**: understand why the database has no public IP at all (Azure Private
-Link — reachable only from inside the virtual network), and practice a safe,
-backup-first migration by recreating it.
+**Goal**: migrate the database off the public internet onto Azure Private
+Link — reachable only from inside the virtual network — and practice a
+real, backup-first migration while doing it.
 
-**Note on this baseline**: unlike Day 2 and Day 3 (where the software is
-pre-installed but left *unwired* for the live demo), `postgresql.tf` already
-deploys the database fully private — delegated subnet, private DNS zone,
-`public_network_access_enabled = false` — from the very first
-`python3 deploy.py` run at the start of the week. There is no earlier
-"public database" phase to migrate away from; `terraform apply` against an
-unmodified `postgresql.tf` at this point in the walkthrough is a no-op. The goal
-of this exercise is thus **why** the database is architected this way, and
-giving you a real, disruptive backup-then-recreate to practice on — not
-walking a live public→private transition that doesn't exist in this repo's
-baseline. Verify the private-by-default setting yourself rather than take
-it on faith:
+**Baseline for today**: the database is genuinely public right now —
+`postgresql.tf` deploys it with a wide-open firewall rule
+(`azurerm_postgresql_flexible_server_firewall_rule.allow_all`, `0.0.0.0` -
+`255.255.255.255`) from the very first `python3 deploy.py` run. This is the
+one deliberately-insecure piece left in the baseline all week, specifically
+so today's migration is real rather than theoretical.
+
+### Demo 1 — Confirm the Database Is Public
+
+Connect directly from your laptop — no VM, no tunnel:
 ```
-az postgres flexible-server show --resource-group <rg> --name psql-<prefix> \
-  --query "{network:network.publicNetworkAccess}"
+psql "host=<db-fqdn> user=psqladmin dbname=learning_journal sslmode=require"
 ```
+It should prompt for a password and connect. Anyone on the internet who
+finds this hostname (or scans for it) can attempt the same thing —
+bots continuously scan for the PostgreSQL default port, 5432.
 
-### Demo 1 — Back Up the Database
+### Demo 2 — Back Up the Database
 
-Back up the current database **via the VM** (the DB has no public IP, so the
-dump has to run over SSH, not directly from your laptop) and pull the result
-down to your own machine — don't leave your only copy on the VM. Reuse the
-Entra ID identity from Day 1 rather than the static key (regenerate the
-`az ssh config` file if it's been a while — the embedded certificate is
-short-lived):
-```bash
-az ssh config --resource-group <rg> --name <vm-name> --file azssh_config
-
-ssh -F azssh_config <vm-ip> \
-  'pg_dump "postgresql://psqladmin@<db-fqdn>/learning_journal?sslmode=require"' \
-  > learningsteps_backup.sql
+While it's still public, back it up directly from your laptop — no jump
+host needed yet:
 ```
-```powershell
-az ssh config --resource-group <rg> --name <vm-name> --file azssh_config
-
-ssh -F azssh_config <vm-ip> `
-  'pg_dump "postgresql://psqladmin@<db-fqdn>/learning_journal?sslmode=require"' `
+pg_dump "postgresql://psqladmin@<db-fqdn>/learning_journal?sslmode=require" \
   > learningsteps_backup.sql
 ```
 Confirm the file is non-empty and contains real table data before
-proceeding — there's no undo once the next step runs (the app comes seeded
+proceeding — there's no undo once the migration runs (the app comes seeded
 with a couple of sample journal entries at deploy time specifically so this
-backup isn't just an empty schema). Pulling it to your laptop (rather than
-leaving it in `/tmp` on the VM) matters here: a bad Day 4 practice run can
-end up recreating more than just the database (see Demo 2's callout), so
-treat the VM as disposable too.
+backup isn't just an empty schema).
 
-**Prerequisite**: the VM's default `postgresql-client` package (Ubuntu
-22.04) is v14, but the server runs PostgreSQL 16 — `pg_dump` refuses to dump
-a *newer* major server version ("aborting because of server version
-mismatch"). `scripts/cloud-init.yaml` installs `postgresql-client-16` from
-the PGDG apt repo instead of the distro default; confirm with
-`pg_dump --version` before proceeding if in doubt.
+**Prerequisite**: your local `psql`/`pg_dump` needs to be version 16 or
+newer to match the server — an older client refuses to dump a *newer*
+major server version ("aborting because of server version mismatch"),
+confirmed live (macOS ships `pg_dump` 14 by default). Install/upgrade if
+needed:
+- **macOS**: `brew install postgresql@16` — this is keg-only and won't be
+  on your `PATH` automatically; either
+  `export PATH="/opt/homebrew/opt/postgresql@16/bin:$PATH"` for this
+  session, or `brew link postgresql@16 --force` to make it permanent.
+- **Windows**: `winget install PostgreSQL.PostgreSQL.16` — restart your
+  shell afterward.
 
-### Demo 2 — Recreate the Database (Backup-First Practice)
+Confirm with `pg_dump --version` before proceeding if in doubt.
 
-Force a destroy-and-recreate of the database server, to practice the
-backup-first discipline on a real (not hypothetical) operation:
+### Demo 3 — Migrate to Private Link (Backup-First Practice)
+
+This is the real, disruptive operation — do not run it until Demo 2's
+backup is confirmed non-empty on your own machine.
+
+Open `network.tf` and add, at the bottom:
+```hcl
+resource "azurerm_subnet" "db" {
+  name                 = "snet-db"
+  resource_group_name  = azurerm_resource_group.main.name
+  virtual_network_name = azurerm_virtual_network.main.name
+  address_prefixes     = ["10.0.2.0/24"]
+
+  delegation {
+    name = "postgresql"
+    service_delegation {
+      name    = "Microsoft.DBforPostgreSQL/flexibleServers"
+      actions = ["Microsoft.Network/virtualNetworks/subnets/join/action"]
+    }
+  }
+}
+
+resource "azurerm_private_dns_zone" "postgres" {
+  name                = "privatelink.postgres.database.azure.com"
+  resource_group_name = azurerm_resource_group.main.name
+}
+
+resource "azurerm_private_dns_zone_virtual_network_link" "postgres" {
+  name                  = "postgres-dns-link"
+  resource_group_name   = azurerm_resource_group.main.name
+  private_dns_zone_name = azurerm_private_dns_zone.postgres.name
+  virtual_network_id    = azurerm_virtual_network.main.id
+}
 ```
-terraform apply -replace="azurerm_postgresql_flexible_server.main"
+Then in `postgresql.tf`: delete the
+`azurerm_postgresql_flexible_server_firewall_rule.allow_all` block
+entirely, and add these lines inside `azurerm_postgresql_flexible_server.main`:
+```hcl
+  public_network_access_enabled = false
+  delegated_subnet_id           = azurerm_subnet.db.id
+  private_dns_zone_id           = azurerm_private_dns_zone.postgres.id
+
+  depends_on = [azurerm_private_dns_zone_virtual_network_link.postgres]
 ```
-This destroys and recreates the same (already-private) server. **Wait time:
-5-8 minutes**, during which the app on the VM cannot reach the database at
-all.
+One more required edit — `vm.tf`'s `azurerm_linux_virtual_machine.vm`
+resource has its own `depends_on` that references the firewall rule you
+just deleted (it was there originally to fix a real race: a public
+Flexible Server denies all connections, including from the VM itself,
+until a firewall rule permits them — so the VM had to wait for it).
+Deleting the firewall rule without removing this reference makes
+`terraform apply` fail immediately with "reference to undeclared
+resource," confirmed live. Change:
+```hcl
+  depends_on = [
+    azurerm_postgresql_flexible_server.main,
+    azurerm_postgresql_flexible_server_firewall_rule.allow_all,
+  ]
+```
+to:
+```hcl
+  depends_on = [azurerm_postgresql_flexible_server.main]
+```
+Apply:
+```
+terraform apply
+```
+Adding `delegated_subnet_id`/`private_dns_zone_id` to an existing server
+forces Terraform to destroy and recreate it — this isn't a flag you're
+toggling, it's a genuine migration. **Wait time: 5-8 minutes**, during
+which the app on the VM cannot reach the database at all.
 
 **A serious interaction to know about, already fixed in this repo**:
 `vm.tf`'s `custom_data` used to interpolate
@@ -607,18 +657,25 @@ completely (none of that is reprovisioned by cloud-init — only by
 `deploy.py`'s one-time SSH setup scripts). `vm.tf` now builds the connection
 string from the statically-known server name
 (`psql-${var.prefix}.postgres.database.azure.com`) instead of the live
-resource attribute, removing that dependency — a database-only `-replace`
-now leaves the VM untouched.
+resource attribute, removing that dependency — this migration leaves the
+VM untouched.
 
-### Demo 3 — Restore and Verify Isolation
+### Demo 4 — Restore and Verify Isolation
 
-Restore from the VM (the only machine that can reach the database):
+The database has no public IP anymore, so the restore has to run **via the
+VM** — reuse the Entra ID identity from Day 1 rather than the static key
+(regenerate the `az ssh config` file if it's been a while — the embedded
+certificate is short-lived):
 ```bash
+az ssh config --resource-group <rg> --name <vm-name> --file azssh_config
+
 scp -F azssh_config learningsteps_backup.sql <vm-ip>:/tmp/
 ssh -F azssh_config <vm-ip> \
   "psql \"<connection-string>\" -f /tmp/learningsteps_backup.sql"
 ```
 ```powershell
+az ssh config --resource-group <rg> --name <vm-name> --file azssh_config
+
 scp -F azssh_config learningsteps_backup.sql <vm-ip>:/tmp/
 ssh -F azssh_config <vm-ip> `
   'psql "<connection-string>" -f /tmp/learningsteps_backup.sql'
@@ -626,11 +683,12 @@ ssh -F azssh_config <vm-ip> `
 (PowerShell's single-quoted strings are literal, so the inner double quotes
 don't need escaping at all — cleaner than bash here.)
 
-Verify the lockdown: a connection attempt from your laptop should fail to
-resolve the database's hostname at all, while the app (running on the VM,
-inside the same virtual network) keeps working normally once restored.
+Verify the lockdown: repeat Demo 1's direct connection attempt from your
+laptop — it should now fail to even resolve the database's hostname, while
+the app (running on the VM, inside the same virtual network) keeps working
+normally once restored.
 
-### Demo 4 — Confirm the App Recovered
+### Demo 5 — Confirm the App Recovered
 
 Check that the app is actually serving data again, not just that the server
 exists — visit `https://<domain>/entries` in your logged-in browser tab and
@@ -649,9 +707,10 @@ ssh -F azssh_config <vm-ip> "sudo systemctl restart learningsteps"
   this is expected. Your laptop is outside the virtual network and has no
   route to the private address space; only resources inside the VNet (like
   the VM) can reach it.
-- **`terraform apply` (with no `-replace`) reports no changes** — this is
-  expected in this baseline; see the note above. Use `-replace` to force
-  the practice recreate.
+- **`terraform apply` in Demo 3 wants to destroy/recreate more than just
+  the database** — check you only edited `postgresql.tf` and only added
+  (not modified) the three new resources in `network.tf`; an unrelated
+  change elsewhere will show up in the same plan and is easy to miss.
 
 ---
 
