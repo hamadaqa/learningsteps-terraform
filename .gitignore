@@ -15,3 +15,5 @@ terraform.tfstate.*.backup
 *.sql
 .playwright-mcp/
 docs/
+
+.learningsteps_key*
