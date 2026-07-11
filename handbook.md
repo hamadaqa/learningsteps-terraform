@@ -179,6 +179,10 @@ ssh -F azssh_config -L 8081:localhost:81 <vm-ip>
 ```
 Browse to `https://localhost:8081` and log in.
 
+Default credentials for NPMPlus:
+admin@learningsteps.local
+LearningSteps123!
+
 (The static key still exists — `deploy.py` uses it for its own automated
 SSH calls — but there's no reason to fall back to it for anything a human
 runs interactively.)
