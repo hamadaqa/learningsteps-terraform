@@ -84,8 +84,7 @@ resource "azurerm_linux_virtual_machine" "vm" {
   # deploy.py's separate seeding step (running moments later) can still
   # lose that race and find the table gone.
   depends_on = [
-    azurerm_postgresql_flexible_server.main,
-    azurerm_postgresql_flexible_server_firewall_rule.allow_all,
+    azurerm_postgresql_flexible_server.main
   ]
 }
 

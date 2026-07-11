@@ -9,17 +9,16 @@ resource "azurerm_postgresql_flexible_server" "main" {
   storage_mb             = 32768
   zone                   = "1"
 
-  # Public by design at baseline — Day 4 migrates this to Private Link
-  # live. Do not add public_network_access_enabled/delegated_subnet_id/
-  # private_dns_zone_id here; that migration is the whole point of the
-  # exercise. See handbook.md Day 4.
-}
+  # Netzwerkkonfiguration auf PRIVAT umstellen
+  public_network_access_enabled = false
+  delegated_subnet_id           = azurerm_subnet.pg_subnet.id
+  private_dns_zone_id           = azurerm_private_dns_zone.pg_dns.id
 
-resource "azurerm_postgresql_flexible_server_firewall_rule" "allow_all" {
-  name             = "allow-all"
-  server_id        = azurerm_postgresql_flexible_server.main.id
-  start_ip_address = "0.0.0.0"
-  end_ip_address   = "255.255.255.255"
+  timeouts {
+    create = "60m"
+    update = "60m"
+    delete = "60m"
+  }
 }
 
 resource "azurerm_postgresql_flexible_server_database" "app" {

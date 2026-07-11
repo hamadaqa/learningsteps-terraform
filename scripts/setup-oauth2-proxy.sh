@@ -38,7 +38,7 @@ if [ ! -f /etc/oauth2-proxy/oauth2-proxy.env ]; then
 #       --sign-in-audience AzureADMyOrg \
 #       --identifier-uris api://$APP_ID
 # then: az ad app credential reset --id $APP_ID
-OAUTH2_PROXY_CLIENT_ID=
+OAUTH2_PROXY_CLIENT_ID= 1bb75c4b-b63f-4944-817b-0133ad1a35ba
 OAUTH2_PROXY_CLIENT_SECRET=
 OAUTH2_PROXY_OIDC_ISSUER_URL=https://login.microsoftonline.com/TENANT_ID/v2.0
 OAUTH2_PROXY_COOKIE_SECRET=

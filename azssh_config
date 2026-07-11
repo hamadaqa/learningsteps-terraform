@@ -1,0 +1,41 @@
+
+Host 51.144.133.189
+	User emad.hamadaqa@cybersteps.onmicrosoft.com
+	CertificateFile "C:\Workspace\learningsteps-terraform\az_ssh_config\51.144.133.189\id_rsa.pub-aadcert.pub"
+	IdentityFile "C:\Workspace\learningsteps-terraform\az_ssh_config\51.144.133.189\id_rsa"
+Host rg-learningstepsemad-vm-learningstepsemad
+	User emad.hamadaqa@cybersteps.onmicrosoft.com
+	HostName 51.144.133.189
+	CertificateFile "C:\Workspace\learningsteps-terraform\az_ssh_config\rg-learningstepsemad-vm-learningstepsemad\id_rsa.pub-aadcert.pub"
+	IdentityFile "C:\Workspace\learningsteps-terraform\az_ssh_config\rg-learningstepsemad-vm-learningstepsemad\id_rsa"
+Host 51.144.133.189
+	User emad.hamadaqa@cybersteps.onmicrosoft.com
+	CertificateFile "C:\Workspace\learningsteps-terraform\az_ssh_config\rg-learningstepsemad-vm-learningstepsemad\id_rsa.pub-aadcert.pub"
+	IdentityFile "C:\Workspace\learningsteps-terraform\az_ssh_config\rg-learningstepsemad-vm-learningstepsemad\id_rsa"
+Host rg-learningstepsemad-vm-learningstepsemad
+	User emad.hamadaqa@cybersteps.onmicrosoft.com
+	HostName 51.144.133.189
+	CertificateFile "C:\Workspace\learningsteps-terraform\az_ssh_config\rg-learningstepsemad-vm-learningstepsemad\id_rsa.pub-aadcert.pub"
+	IdentityFile "C:\Workspace\learningsteps-terraform\az_ssh_config\rg-learningstepsemad-vm-learningstepsemad\id_rsa"
+Host 51.144.133.189
+	User emad.hamadaqa@cybersteps.onmicrosoft.com
+	CertificateFile "C:\Workspace\learningsteps-terraform\az_ssh_config\rg-learningstepsemad-vm-learningstepsemad\id_rsa.pub-aadcert.pub"
+	IdentityFile "C:\Workspace\learningsteps-terraform\az_ssh_config\rg-learningstepsemad-vm-learningstepsemad\id_rsa"
+Host rg-learningstepsemad-vm-learningstepsemad
+	User emad.hamadaqa@cybersteps.onmicrosoft.com
+	HostName 51.144.133.189
+	CertificateFile "C:\Workspace\learningsteps-terraform\az_ssh_config\rg-learningstepsemad-vm-learningstepsemad\id_rsa.pub-aadcert.pub"
+	IdentityFile "C:\Workspace\learningsteps-terraform\az_ssh_config\rg-learningstepsemad-vm-learningstepsemad\id_rsa"
+Host 51.144.133.189
+	User emad.hamadaqa@cybersteps.onmicrosoft.com
+	CertificateFile "C:\Workspace\learningsteps-terraform\az_ssh_config\rg-learningstepsemad-vm-learningstepsemad\id_rsa.pub-aadcert.pub"
+	IdentityFile "C:\Workspace\learningsteps-terraform\az_ssh_config\rg-learningstepsemad-vm-learningstepsemad\id_rsa"
+Host rg-learningstepsemad-vm-learningstepsemad
+	User emad.hamadaqa@cybersteps.onmicrosoft.com
+	HostName 51.144.133.189
+	CertificateFile "C:\Workspace\learningsteps-terraform\az_ssh_config\rg-learningstepsemad-vm-learningstepsemad\id_rsa.pub-aadcert.pub"
+	IdentityFile "C:\Workspace\learningsteps-terraform\az_ssh_config\rg-learningstepsemad-vm-learningstepsemad\id_rsa"
+Host 51.144.133.189
+	User emad.hamadaqa@cybersteps.onmicrosoft.com
+	CertificateFile "C:\Workspace\learningsteps-terraform\az_ssh_config\rg-learningstepsemad-vm-learningstepsemad\id_rsa.pub-aadcert.pub"
+	IdentityFile "C:\Workspace\learningsteps-terraform\az_ssh_config\rg-learningstepsemad-vm-learningstepsemad\id_rsa"
